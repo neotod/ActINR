@@ -20,12 +20,13 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 plt.gray()
 
+sys.path.append('modules')
 
 import torch.multiprocessing as mp
 
-from modules import utils
-from modules import miner
-from modules import kilonerf_time
+import utils
+import miner
+import kilonerf_time
 
 
 utils = importlib.reload(utils)

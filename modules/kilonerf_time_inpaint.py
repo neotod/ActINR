@@ -21,7 +21,7 @@ import cv2
 import torch
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.nn import Parameter
-from dataset_class import VideoDataset, BalancedSampler, DistributedSamplerWrapper
+from modules.dataset_class import VideoDataset, BalancedSampler, DistributedSamplerWrapper
 import folding_utils as unfoldNd
 import torch.nn.functional as F
 
