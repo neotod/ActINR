@@ -16,7 +16,7 @@ import math
 import numpy as np
 from scipy import io
 from skimage.metrics import structural_similarity as ssim_func
-from distr_sampler import MyDistributedSampler
+# from distr_sampler import MyDistributedSampler
 from pytorch_msssim import ms_ssim
 import cv2
 import torch
@@ -26,7 +26,7 @@ from torch.nn import Parameter
 from dataset_class import VideoDataset, BalancedSampler, DistributedSamplerWrapper
 import folding_utils as unfoldNd
 import torch.nn.functional as F
-from dahuffman import HuffmanCodec
+# from dahuffman import HuffmanCodec
 
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -46,7 +46,7 @@ losses = importlib.reload(losses)
 volutils = importlib.reload(volutils)
 wire = importlib.reload(wire)
 models = importlib.reload(models)
-#from distr_sampler import MyDistributedSampler
+# from distr_sampler import MyDistributedSampler
 from torch.utils.data.distributed import DistributedSampler
 
 
@@ -144,34 +144,13 @@ def multibias(rank, stopping_mse, config, pretrained_models=None,world_size=None
 
     H = test_dataset.h_max+1
     W = test_dataset.w_max+1
-    # H=1
-    # test_dataset.h_max =1 
-    # test_dataset.w_max = 300
-    # W=300
-    # nchunks=1
+
     nchunks= test_dataset.nchunks
-
-    # if config.resize != -1:
-    #     H,W = config.resize
-    # else:
-        
-    #     H,W = 1080,1920
-    #     #H,W = 480,480
-    # Create folders and unfolders
-
-
 
     
     fold = torch.nn.Fold(output_size=(H, W),
                          kernel_size=config.ksize,
                          stride=config.stride)
-    
-    #window_weights = get_bilinear(H,W,config.ksize,config.stride)
-    #window_weights = window_weights.cuda(rank)
-    
-
-
-
 
     config.no_tiles = test_dataset.no_tiles
     print(config.no_tiles)
@@ -202,18 +181,23 @@ def multibias(rank, stopping_mse, config, pretrained_models=None,world_size=None
             model.load_state_dict(pretrained_models[idx])
             
         model_list.append(model)
+
+
+    param_groups=[]
+    for name,params in model.named_parameters():
+        if name.endswith("weight"):
+            param_groups+=[{"params": [params],"lr": config.lr,"name":name}]
+        elif name.endswith("scale"):
+            param_groups+=[{"params": [params],"lr": config.lr,"name":name}]
+        elif name.endswith("shift"):
+            param_groups+=[{"params": [params],"lr": config.lr,"name":name}]
+        
+    param_groups += [{"params": [p for n,p in model.named_parameters() if n.endswith("bias")],
+                     "lr": config.lr,"name": "biases"}]
+    optim = torch.optim.Adam(param_groups)
+    prob_models=[{"params": [p for n,p in model.named_parameters() if "cdf" in n],"lr": config.prob_lr,"name": "prob_params"}]
+    prob_optim = torch.optim.Adam(prob_models)
     
-    #hyper_parameters = [param for name, param in model.named_parameters() if 'hyper' in name]
-    #other_parameters = [param for name, param in model.named_parameters() if 'hyper' not in name]
-    #train_dataset.edge_init(model)
-    #from optimizer import Adan
-    #optim = Adan(params=params,lr=config.lr)
-    # optim = torch.optim.Adam([
-    # {'params': hyper_parameters, 'lr': 1e-3},  # Learning rate for 'hyper' parameters
-    # {'params': other_parameters, 'lr': 5e-3}])   # Learning rate for other parameters
-
-
-    optim = torch.optim.Adam(model.parameters(),lr=config.lr)
         
     # Criteria
     criterion = losses.L2Norm()
@@ -240,22 +224,25 @@ def multibias(rank, stopping_mse, config, pretrained_models=None,world_size=None
 
         for idx in tbar:
             lr = config.lr*pow(0.1, idx/config.epochs)
-            new_lr=adjust_lr(optim,idx/config.epochs,config)
             optim.param_groups[0]['lr'] = lr
             train_sampler.set_epoch(idx)
             psnr_list = []
-            idx_list = []
-            idx_list1= []
-            #indices_t = torch.randperm(nimg)
+
+
+                        
+            if idx % 10 == 0:
+                model.module.set_divider()
+            
             for sample in train_loader: 
                 t_coords = sample["t"].cuda(rank).permute(1,0,2)
                 imten = sample["img"].cuda(rank)
                 model_idx = sample["model_idx"].cuda(rank)
                 t_coords = (t_coords,model_idx)
-
-                optim.zero_grad()
                 
+                optim.zero_grad()
+                prob_optim.zero_grad()
 
+                entr_loss, bits = model.module.calculate_bit_per_parameter()
                 im_out = model(coords_chunked, learn_indices,t_coords,epochs=idx)
                 im_out = im_out.permute(0, 3, 2, 1).reshape(-1,config.out_features,config.ksize[0],config.ksize[1],nchunks)
                 #im_out = im_out#*window_weights
@@ -266,22 +253,23 @@ def multibias(rank, stopping_mse, config, pretrained_models=None,world_size=None
                     im_estim = fold(im_out).reshape(1, -1, H, W)
                     loss = criterion(im_estim, imten[0,...])
                 else:
-                    loss=criterion(im_estim, imten)#*grad_map[:,None,...]
-                    psnr_loss = loss.item()
+                    loss=criterion(im_estim, imten)
+                    total_loss = loss + config.lambda_rate*entr_loss
                 
 
 
-
-                loss.backward()
+                total_loss.backward()
                 optim.step()
+                prob_optim.step()
                 with torch.no_grad():
-                    lossval = psnr_loss
+                    bpp = bits / (H*W*config.n_frames)
+                    lossval = loss.item()
                     psnr_list.append(-10*math.log10(lossval))
 
                 
             avg_psnr = sum(psnr_list) / len(psnr_list)
             if rank == 0:
-                tbar.set_description(('%.3f')%(avg_psnr))
+                tbar.set_description(('%.3f %.3f')%(avg_psnr,bpp))
                 tbar.refresh()
     
 
@@ -292,44 +280,40 @@ def multibias(rank, stopping_mse, config, pretrained_models=None,world_size=None
 
         with torch.no_grad():
 
-            model_list = [model]
-            for model_ind, cur_model in enumerate(model_list):
-                error_test = []
-                rec_test = []
-                mssim_list = []
-                time_list= []
-                for sample in test_loader: 
-                    t_coords = sample["t"].cuda(rank).permute(1,0,2)
-                    imten = sample["img"].cuda(rank)
-                    model_idx = sample["model_idx"].cuda(rank)
-                    t_coords = (t_coords,model_idx)
-                    im_out = cur_model(coords_chunked,learn_indices,t_coords,epochs=10000,gt_data=imten)#, toy visualization 
-                    im_out = im_out.permute(0, 3, 2, 1).reshape(1,config.out_features,config.ksize[0],config.ksize[1],-1)
-                    im_out = im_out#*window_weights
-                    im_out = im_out.reshape(1,config.out_features*config.ksize[0]*config.ksize[1],-1)
-                    im_estim = fold(im_out).reshape(-1, config.out_features, H, W) 
-                    with torch.no_grad():
-                        error_test.append(((imten-im_estim)**2).detach().cpu())
-                        rec_test.append(im_estim.detach().cpu())
-                        mssim_list.append(msssim_fn_batch([im_estim], imten))
-                    
+            error_test = []
+            rec_test = []
+            mssim_list = []
+            time_list= []
+            for sample in test_loader: 
+                t_coords = sample["t"].cuda(rank).permute(1,0,2)
+                imten = sample["img"].cuda(rank)
+                model_idx = sample["model_idx"].cuda(rank)
+                t_coords = (t_coords,model_idx)
+                im_out = model(coords_chunked,learn_indices,t_coords)
+                im_out = im_out.permute(0, 3, 2, 1).reshape(1,config.out_features,config.ksize[0],config.ksize[1],-1)
+                im_out = im_out.reshape(1,config.out_features*config.ksize[0]*config.ksize[1],-1)
+                im_estim = fold(im_out).reshape(-1, config.out_features, H, W) 
+                with torch.no_grad():
+                    error_test.append(((imten-im_estim)**2).detach().cpu())
+                    rec_test.append(im_estim.detach().cpu())
+                    mssim_list.append(msssim_fn_batch([im_estim], imten))
+                
 
-                #print(time_list)
-                best_img =  torch.cat(rec_test,dim=0).permute(0, 2, 3, 1).numpy()
-                pred_videos.append(best_img)
-                if not config.slowmo:
-                    mse_list_test = (torch.cat(error_test,dim=0)).mean([1, 2, 3])
-                    mse_list_test = tuple(mse_list_test.numpy().tolist())
-                    mssim_mean = torch.cat(mssim_list,dim=0).mean()
-                    psnr_array_test = -10*np.log10(np.array(mse_list_test))
-                    avg_test_psnr = np.average(psnr_array_test)
-                    quant_str = "quantized" if model_ind else "non-quantized"
-                    print('{} test psnr: {:.3f}'.format(quant_str,avg_test_psnr))
-                    with open("{}/rank0.txt".format(save_path),"a") as f:
-                        f.write("{} Average Test PSNR : {:.4f} \n".format(quant_str,avg_test_psnr))
-                        f.write("{} Average Test SSIM : {:.4f} \n".format(quant_str,mssim_mean))
-                        if not config.inference:
-                            f.write("Average Train PNSR: {:.4f} \n".format(avg_psnr))
+            #print(time_list)
+            best_img =  torch.cat(rec_test,dim=0).permute(0, 2, 3, 1).numpy()
+            pred_videos.append(best_img)
+            if not config.slowmo:
+                mse_list_test = (torch.cat(error_test,dim=0)).mean([1, 2, 3])
+                mse_list_test = tuple(mse_list_test.numpy().tolist())
+                mssim_mean = torch.cat(mssim_list,dim=0).mean()
+                psnr_array_test = -10*np.log10(np.array(mse_list_test))
+                avg_test_psnr = np.average(psnr_array_test)
+                print('Test psnr: {:.3f}'.format(avg_test_psnr))
+                with open("{}/rank0.txt".format(save_path),"a") as f:
+                    f.write("Average Test PSNR : {:.4f} \n".format(avg_test_psnr))
+                    f.write("Average Test SSIM : {:.4f} \n".format(mssim_mean))
+                    if not config.inference:
+                        f.write("Average Train PNSR: {:.4f} \n".format(avg_psnr))
 
         if not config.inference:       
             psnr_array_train = avg_psnr
@@ -453,15 +437,3 @@ def get_bilinear(H,W,ksize,stride):
     return windows
 
 
-
-def adjust_lr(optimizer, cur_epoch,args):
-
-    up_ratio, up_pow, min_lr = [0.1,1.0,0.1]
-    if cur_epoch < up_ratio:
-        lr_mult = min_lr + (1. - min_lr) * (cur_epoch / up_ratio)** up_pow
-    else:
-        lr_mult = 0.5 * (math.cos(math.pi * (cur_epoch - up_ratio)/ (1 - up_ratio)) + 1.0)
-
-    #optimizer.param_groups[0]['lr'] = lr_mult*args.lr
-
-    return args.lr * lr_mult

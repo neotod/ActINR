@@ -14,17 +14,18 @@ from torch.distributed import init_process_group, destroy_process_group
 import cv2
 import torch
 
+import matplotlib
+matplotlib.use('Agg')
+
 import matplotlib.pyplot as plt
 plt.gray()
-
-sys.path.append('modules')
 
 
 import torch.multiprocessing as mp
 
-import utils
-import miner
-import kilonerf_time
+from modules import utils
+from modules import miner
+from modules import kilonerf_time
 
 
 utils = importlib.reload(utils)

@@ -16,7 +16,7 @@ import math
 import numpy as np
 from scipy import io
 from skimage.metrics import structural_similarity as ssim_func
-from distr_sampler import MyDistributedSampler
+# from distr_sampler import MyDistributedSampler
 from pytorch_msssim import ms_ssim
 import cv2
 import torch
@@ -46,7 +46,7 @@ losses = importlib.reload(losses)
 volutils = importlib.reload(volutils)
 wire = importlib.reload(wire)
 models = importlib.reload(models)
-#from distr_sampler import MyDistributedSampler
+## from distr_sampler import MyDistributedSampler
 from torch.utils.data.distributed import DistributedSampler
 
 
