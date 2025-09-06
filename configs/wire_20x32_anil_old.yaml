@@ -1,0 +1,29 @@
+# Configuration YAML file inferred from main() function
+
+# Dataset and model identifiers
+dataset_name: "<dataset_name>"           # string, e.g. "bosph" 
+model_type: "<model_type>"               # string, e.g. "kilonerf"
+
+# Save paths and experiment details
+save_path: "<path_to_save>"               # string, e.g. "./results"
+exp_name: "<experiment_name>"             # string, used in saving results folder
+
+# Model and training hyperparameters
+nfeat: 36                             # number of features, e.g., 64
+ksize: [<int>, <int>]                    # kernel size dimensions, e.g., [3,3]
+nonlin: "wire"          # e.g., "relu", "sigmoid"
+optim_type: "adam"        # e.g., "adam", "sgd"
+
+# Training specifics
+epochs: 2000                           # number of training epochs
+n_frames: <int>                        # number of frames, used when inference is True
+
+# Flags and modes
+inference: <bool>                      # whether to run inference mode
+pretrained_path: "<path or None>"      # path to pretrained model or "None"
+
+# Other settings (some commented in code, possibly optional)
+# start: <int>
+# partition_size: <int>
+# end: <int>
+
