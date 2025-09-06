@@ -11,12 +11,20 @@ from operator import itemgetter
 from math import ceil
 from matplotlib import pyplot as plt
 
+import os
+
 class VideoDataset(Dataset):
 
     def __init__(self, path, freq, no_data, train, part,resize=(480,960),unfold=None,start=0,end=100,config=None):
+        print(f'path: {path}')
+
         image_list = open(path,"r")
         image_list = [i.strip("\n") for i in image_list]
         image_list.sort()
+
+        # print(os.listdir(image_list[0]))
+        # self.image_list = os.listdir(image_list[0])
+
         self.start = start 
         self.end = end
         self.image_list = image_list[start:end]
@@ -31,6 +39,9 @@ class VideoDataset(Dataset):
         nchunks = unfold(weighing).shape[-1]    
         # nchunks=1
         self.nchunks = nchunks  
+
+
+        print(f'image_list: {image_list}')
         
         self.construct_t(no_data,freq,train,nchunks,part)
         if resize != -1:
@@ -74,6 +85,8 @@ class VideoDataset(Dataset):
             series = [el for el in chunks if (el%freq)!=0 and el<(max(chunk)//freq)*freq]
             model_idx = [idx for (el,idx) in zip(chunks,chunk_indices) if (el%freq)!=0 and el<(max(chunk)//freq)*freq]
             times = [t for (el,t) in zip(chunks,times) if (el%freq)!=0 and el<(max(chunk)//freq)*freq]
+            
+        print(series)
         self.image_list = [self.image_list[j] for j in series]
         self.times= torch.repeat_interleave(torch.tensor(times)[None,:,None],repeats=no_chunks,dim=0)
         self.model_idx = torch.tensor(model_idx)

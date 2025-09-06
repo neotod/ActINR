@@ -63,11 +63,11 @@ def main(rank,config,world_size,args):
     
     # Read configuration
     config = utils.load_config(configname)
-    # config.start = args.start
-    #config.nfeat = args.nfeat
-    # config.partition_size = args.partition
-    # config.n_frames = args.nframes
-    # config.exp_name = "bosph_gop{}".format(config.end)
+    config.start = args.start
+    config.nfeat = args.nfeat
+    config.partition_size = args.partition
+    config.n_frames = args.nframes
+    config.exp_name = "bosph_gop{}".format(config.end)
     if not config.inference:
         #torch.cuda.set_device(rank)
         ddp_setup(rank,world_size)
@@ -204,7 +204,7 @@ args = parser.parse_args()
 if __name__ == '__main__':
     inference = False
     if not inference:
-        config = "configs/wire_20x32_anil.yaml"
+        config = "configs/config.yaml"
         world_size = torch.cuda.device_count()
         print(world_size)
         mp.spawn(main,args=(config,world_size,args),nprocs=world_size)
