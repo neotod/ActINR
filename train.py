@@ -64,7 +64,7 @@ def main(rank,config,world_size,args):
     # Read configuration
     config = utils.load_config(configname)
     config.start = args.start
-    config.nfeat = args.nfeat
+    # config.nfeat = args.nfeat
     config.partition_size = args.partition
     config.n_frames = args.nframes
     config.exp_name = "bosph_gop{}".format(config.end)
