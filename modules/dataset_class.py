@@ -203,9 +203,14 @@ class VideoDataset(Dataset):
         tensor_image = self.img_load(idx) #, grad_map
         t = self.times[:,idx,:]
         model_idx = self.model_idx[idx]
+
+        print(self.resize)
         if self.resize != -1:
+            print(f'dataset - self.resize: {self.resize}')
             tensor_image = interpolate(tensor_image.unsqueeze(0),size=self.resize,mode='area').squeeze(0)
         sample = {'img': tensor_image, 't': t, 'model_idx': model_idx} # , "grad_map": grad_map
+
+        
         return sample
     
 

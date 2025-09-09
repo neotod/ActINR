@@ -151,12 +151,12 @@ def multibias(rank, stopping_mse, config, pretrained_models=None,world_size=None
     # nchunks=1
     nchunks= test_dataset.nchunks
 
-    # if config.resize != -1:
-    #     H,W = config.resize
-    # else:
+    if config.resize != -1:
+        H,W = config.resize
+    else:
         
-    #     H,W = 1080,1920
-    #     #H,W = 480,480
+        H,W = 1080,1920
+        #H,W = 480,480
     # Create folders and unfolders
 
 
@@ -224,6 +224,8 @@ def multibias(rank, stopping_mse, config, pretrained_models=None,world_size=None
                                      config.ksize,
                                      config.coordstype,
                                      unfold)
+
+    print(f'H: {H}, W: {W}')
     
 
     coords_chunked = coords_chunked.cuda(rank)
@@ -255,17 +257,22 @@ def multibias(rank, stopping_mse, config, pretrained_models=None,world_size=None
 
                 optim.zero_grad()
                 
-
+                print(f'coords_chunked: {coords_chunked.shape}')
                 im_out = model(coords_chunked, learn_indices,t_coords,epochs=idx)
                 im_out = im_out.permute(0, 3, 2, 1).reshape(-1,config.out_features,config.ksize[0],config.ksize[1],nchunks)
                 #im_out = im_out#*window_weights
                 im_out = im_out.reshape(-1,config.out_features*config.ksize[0]*config.ksize[1],nchunks)
+
+                print(f'im_out.shape: {im_out.shape}')
                 im_estim = fold(im_out).reshape(-1, config.out_features, H, W)
                 
                 if config.warm_start and idx < config.warm_epochs:
                     im_estim = fold(im_out).reshape(1, -1, H, W)
                     loss = criterion(im_estim, imten[0,...])
                 else:
+                    print(f'im_estim.shape: {im_estim.shape}')
+                    print(f'im_ten.shape: {imten.shape}')
+
                     loss=criterion(im_estim, imten)#*grad_map[:,None,...]
                     psnr_loss = loss.item()
                 
