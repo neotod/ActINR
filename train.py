@@ -204,7 +204,7 @@ args = parser.parse_args()
 if __name__ == '__main__':
     inference = False
     if not inference:
-        config = "configs/config.yaml"
+        config = args.config
         world_size = torch.cuda.device_count()
         print(world_size)
         mp.spawn(main,args=(config,world_size,args),nprocs=world_size)

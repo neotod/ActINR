@@ -1,6 +1,6 @@
 # folding
-ksize: [360, 480]
-stride: [360, 480]
+ksize: [173, 173]
+stride: [173, 173]
 group_size: [27,48]
 entropy_group: [3,4]
 h: 3840
